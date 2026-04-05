@@ -36,43 +36,30 @@ public class RLCraftFarmingHelperMod {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickCrop(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getWorld().isRemote || event.getHand() != EnumHand.MAIN_HAND) {
+        if (event.getHand() != EnumHand.MAIN_HAND) {
+            return;
+        }
+
+        World world = event.getWorld();
+        BlockPos pos = event.getPos();
+        HarvestTarget target = findSupportedMatureTarget(world, pos, world.getBlockState(pos));
+        if (target == null) {
+            return;
+        }
+
+        if (world.isRemote) {
+            // Mirror server intent client-side so this click is treated as consumed by the mod.
+            markInteractionHandled(event);
+            LOGGER.debug("Client acknowledged handled crop click at {} ({})", pos, target.cropBlock.getRegistryName());
             return;
         }
 
         EntityPlayer player = event.getEntityPlayer();
-        World world = event.getWorld();
-        BlockPos pos = event.getPos();
-        IBlockState state = world.getBlockState(pos);
-        Block block = state.getBlock();
-
-        IBlockState replantedState;
-        Item fallbackSeedItem;
-
-        if (block instanceof BlockCrops) {
-            BlockCrops crops = (BlockCrops) block;
-            if (!crops.isMaxAge(state)) {
-                return;
-            }
-            replantedState = crops.withAge(0);
-            fallbackSeedItem = crops.getItemDropped(replantedState, world.rand, 0);
-        } else if (block instanceof BlockNetherWart) {
-            // Nether wart is age-based but not a BlockCrops subclass, so handle it explicitly.
-            int age = state.getValue(BlockNetherWart.AGE);
-            if (age < 3) {
-                return;
-            }
-            replantedState = state.withProperty(BlockNetherWart.AGE, 0);
-            fallbackSeedItem = Items.NETHER_WART;
-        } else {
-            return;
-        }
-
         if (!(player instanceof EntityPlayerMP)) {
             return;
         }
 
-        LOGGER.debug("Intercepted mature crop right-click at {} by {} ({})", pos, player.getName(), block.getRegistryName());
+        LOGGER.debug("Intercepted mature crop right-click at {} by {} ({})", pos, player.getName(), target.cropBlock.getRegistryName());
 
         EntityPlayerMP playerMP = (EntityPlayerMP) player;
         boolean harvested = playerMP.interactionManager.tryHarvestBlock(pos);
@@ -81,19 +68,48 @@ public class RLCraftFarmingHelperMod {
             return;
         }
 
-        // Mark this click as handled without canceling the entire event flow.
-        // Canceling here can poison follow-up right-click item use and cause rollback on next plant attempt.
-        event.setUseBlock(Event.Result.DENY);
-        event.setUseItem(Event.Result.DENY);
+        markInteractionHandled(event);
         LOGGER.debug("Marked interaction handled at {} with use-block/use-item DENY", pos);
 
-        if (canReplantAt(world, pos, replantedState)
-                && consumeOneReplantItem(player, world, pos, block, fallbackSeedItem)) {
-            world.setBlockState(pos, replantedState, 3);
-            LOGGER.debug("Replanted {} at {}", block.getRegistryName(), pos);
+        if (canReplantAt(world, pos, target.replantedState)
+                && consumeOneReplantItem(player, world, pos, target.cropBlock, target.fallbackSeedItem)) {
+            world.setBlockState(pos, target.replantedState, 3);
+            LOGGER.debug("Replanted {} at {}", target.cropBlock.getRegistryName(), pos);
         } else {
             LOGGER.debug("Skipped replant at {} (invalid location or no matching replant item)", pos);
         }
+    }
+
+    private static HarvestTarget findSupportedMatureTarget(World world, BlockPos pos, IBlockState state) {
+        Block block = state.getBlock();
+
+        if (block instanceof BlockCrops) {
+            BlockCrops crops = (BlockCrops) block;
+            if (!crops.isMaxAge(state)) {
+                return null;
+            }
+
+            IBlockState replantedState = crops.withAge(0);
+            Item fallbackSeedItem = crops.getItemDropped(replantedState, world.rand, 0);
+            return new HarvestTarget(block, replantedState, fallbackSeedItem);
+        }
+
+        if (block instanceof BlockNetherWart) {
+            int age = state.getValue(BlockNetherWart.AGE);
+            if (age < 3) {
+                return null;
+            }
+
+            IBlockState replantedState = state.withProperty(BlockNetherWart.AGE, 0);
+            return new HarvestTarget(block, replantedState, Items.NETHER_WART);
+        }
+
+        return null;
+    }
+
+    private static void markInteractionHandled(PlayerInteractEvent.RightClickBlock event) {
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
     }
 
     private static boolean canReplantAt(World world, BlockPos pos, IBlockState replantedState) {
@@ -146,5 +162,17 @@ public class RLCraftFarmingHelperMod {
         return fallbackSeedItem != null
                 && fallbackSeedItem != Item.getItemById(0)
                 && stack.getItem() == fallbackSeedItem;
+    }
+
+    private static class HarvestTarget {
+        private final Block cropBlock;
+        private final IBlockState replantedState;
+        private final Item fallbackSeedItem;
+
+        private HarvestTarget(Block cropBlock, IBlockState replantedState, Item fallbackSeedItem) {
+            this.cropBlock = cropBlock;
+            this.replantedState = replantedState;
+            this.fallbackSeedItem = fallbackSeedItem;
+        }
     }
 }
