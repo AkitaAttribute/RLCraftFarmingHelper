@@ -71,21 +71,17 @@ public class RLCraftFarmingHelperMod {
 
         EntityPlayerMP playerMP = (EntityPlayerMP) player;
         boolean harvested = playerMP.interactionManager.tryHarvestBlock(pos);
-        if (!harvested || !world.isAirBlock(pos)) {
+        if (!harvested) {
             return;
         }
 
-        // Harvest is always allowed for supported mature plants; replanting is best-effort.
-        if (!canReplantAt(world, pos, replantedState)) {
-            return;
-        }
-
-        if (!consumeOneReplantItem(player, world, pos, block, fallbackSeedItem)) {
-            return;
-        }
-
-        world.setBlockState(pos, replantedState, 3);
+        // Mark handled as soon as normal harvest succeeds. Replanting is optional.
         event.setCanceled(true);
+
+        if (canReplantAt(world, pos, replantedState)
+                && consumeOneReplantItem(player, world, pos, block, fallbackSeedItem)) {
+            world.setBlockState(pos, replantedState, 3);
+        }
     }
 
     private static boolean canReplantAt(World world, BlockPos pos, IBlockState replantedState) {
