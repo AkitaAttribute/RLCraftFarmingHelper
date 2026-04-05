@@ -15,8 +15,11 @@ import net.minecraft.world.World;
 import net.minecraftforge.common.IPlantable;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 @Mod(
         modid = RLCraftFarmingHelperMod.MOD_ID,
@@ -29,6 +32,7 @@ public class RLCraftFarmingHelperMod {
     public static final String MOD_ID = "rlcraftfarminghelper";
     public static final String NAME = "RLCraft Farming Helper";
     public static final String VERSION = "1.0.1";
+    private static final Logger LOGGER = LogManager.getLogger(MOD_ID);
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickCrop(PlayerInteractEvent.RightClickBlock event) {
@@ -64,23 +68,31 @@ public class RLCraftFarmingHelperMod {
             return;
         }
 
-
         if (!(player instanceof EntityPlayerMP)) {
             return;
         }
 
+        LOGGER.debug("Intercepted mature crop right-click at {} by {} ({})", pos, player.getName(), block.getRegistryName());
+
         EntityPlayerMP playerMP = (EntityPlayerMP) player;
         boolean harvested = playerMP.interactionManager.tryHarvestBlock(pos);
+        LOGGER.debug("Harvest attempt at {} result={}", pos, harvested);
         if (!harvested) {
             return;
         }
 
-        // Mark handled as soon as normal harvest succeeds. Replanting is optional.
-        event.setCanceled(true);
+        // Mark this click as handled without canceling the entire event flow.
+        // Canceling here can poison follow-up right-click item use and cause rollback on next plant attempt.
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
+        LOGGER.debug("Marked interaction handled at {} with use-block/use-item DENY", pos);
 
         if (canReplantAt(world, pos, replantedState)
                 && consumeOneReplantItem(player, world, pos, block, fallbackSeedItem)) {
             world.setBlockState(pos, replantedState, 3);
+            LOGGER.debug("Replanted {} at {}", block.getRegistryName(), pos);
+        } else {
+            LOGGER.debug("Skipped replant at {} (invalid location or no matching replant item)", pos);
         }
     }
 
