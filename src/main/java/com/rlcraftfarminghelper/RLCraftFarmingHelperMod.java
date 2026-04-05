@@ -2,9 +2,11 @@ package com.rlcraftfarminghelper;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockCrops;
+import net.minecraft.block.BlockNetherWart;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumHand;
@@ -40,16 +42,28 @@ public class RLCraftFarmingHelperMod {
         IBlockState state = world.getBlockState(pos);
         Block block = state.getBlock();
 
-        if (!(block instanceof BlockCrops)) {
+        IBlockState replantedState;
+        Item fallbackSeedItem;
+
+        if (block instanceof BlockCrops) {
+            BlockCrops crops = (BlockCrops) block;
+            if (!crops.isMaxAge(state)) {
+                return;
+            }
+            replantedState = crops.withAge(0);
+            fallbackSeedItem = crops.getItemDropped(replantedState, world.rand, 0);
+        } else if (block instanceof BlockNetherWart) {
+            // Nether wart is age-based but not a BlockCrops subclass, so handle it explicitly.
+            int age = state.getValue(BlockNetherWart.AGE);
+            if (age < 3) {
+                return;
+            }
+            replantedState = state.withProperty(BlockNetherWart.AGE, 0);
+            fallbackSeedItem = Items.NETHER_WART;
+        } else {
             return;
         }
 
-        BlockCrops crops = (BlockCrops) block;
-        if (!crops.isMaxAge(state)) {
-            return;
-        }
-
-        Item fallbackSeedItem = crops.getItemDropped(crops.withAge(0), world.rand, 0);
         if (!hasReplantItem(player, world, pos, block, fallbackSeedItem)) {
             return;
         }
@@ -68,7 +82,7 @@ public class RLCraftFarmingHelperMod {
             return;
         }
 
-        world.setBlockState(pos, crops.withAge(0), 3);
+        world.setBlockState(pos, replantedState, 3);
         event.setCanceled(true);
     }
 
