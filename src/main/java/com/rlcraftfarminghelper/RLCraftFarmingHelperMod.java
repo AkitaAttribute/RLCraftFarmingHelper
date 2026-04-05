@@ -64,9 +64,6 @@ public class RLCraftFarmingHelperMod {
             return;
         }
 
-        if (!hasReplantItem(player, world, pos, block, fallbackSeedItem)) {
-            return;
-        }
 
         if (!(player instanceof EntityPlayerMP)) {
             return;
@@ -78,6 +75,11 @@ public class RLCraftFarmingHelperMod {
             return;
         }
 
+        // Harvest is always allowed for supported mature plants; replanting is best-effort.
+        if (!canReplantAt(world, pos, replantedState)) {
+            return;
+        }
+
         if (!consumeOneReplantItem(player, world, pos, block, fallbackSeedItem)) {
             return;
         }
@@ -86,20 +88,8 @@ public class RLCraftFarmingHelperMod {
         event.setCanceled(true);
     }
 
-    private static boolean hasReplantItem(EntityPlayer player, World world, BlockPos cropPos, Block cropBlock, Item fallbackSeedItem) {
-        for (ItemStack stack : player.inventory.mainInventory) {
-            if (isValidReplantStack(stack, world, cropPos, cropBlock, fallbackSeedItem)) {
-                return true;
-            }
-        }
-
-        for (ItemStack stack : player.inventory.offHandInventory) {
-            if (isValidReplantStack(stack, world, cropPos, cropBlock, fallbackSeedItem)) {
-                return true;
-            }
-        }
-
-        return false;
+    private static boolean canReplantAt(World world, BlockPos pos, IBlockState replantedState) {
+        return world.isAirBlock(pos) && replantedState.getBlock().canPlaceBlockAt(world, pos);
     }
 
     private static boolean consumeOneReplantItem(EntityPlayer player, World world, BlockPos cropPos, Block cropBlock, Item fallbackSeedItem) {
