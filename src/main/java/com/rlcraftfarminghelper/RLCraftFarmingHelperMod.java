@@ -5,7 +5,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.TriState;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -15,7 +15,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.common.IPlantable;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import org.apache.logging.log4j.LogManager;
@@ -63,7 +62,7 @@ public final class RLCraftFarmingHelperMod {
         markInteractionHandled(event);
 
         if (canReplantAt(level, pos, target.replantedState())
-                && consumeOneReplantItem(player, level, pos, target.cropBlock())) {
+                && consumeOneReplantItem(player, target.cropBlock())) {
             level.setBlock(pos, target.replantedState(), Block.UPDATE_ALL);
             LOGGER.debug("Replanted {} at {}", target.cropBlock(), pos);
         } else {
@@ -103,21 +102,16 @@ public final class RLCraftFarmingHelperMod {
         return level.isEmptyBlock(pos) && replantedState.canSurvive(level, pos);
     }
 
-    private static boolean consumeOneReplantItem(
-            ServerPlayer player,
-            Level level,
-            BlockPos cropPos,
-            Block cropBlock
-    ) {
+    private static boolean consumeOneReplantItem(ServerPlayer player, Block cropBlock) {
         for (ItemStack stack : player.getInventory().items) {
-            if (isValidReplantStack(stack, level, cropPos, cropBlock)) {
+            if (isValidReplantStack(stack, cropBlock)) {
                 consumeOne(player, stack);
                 return true;
             }
         }
 
         for (ItemStack stack : player.getInventory().offhand) {
-            if (isValidReplantStack(stack, level, cropPos, cropBlock)) {
+            if (isValidReplantStack(stack, cropBlock)) {
                 consumeOne(player, stack);
                 return true;
             }
@@ -133,23 +127,10 @@ public final class RLCraftFarmingHelperMod {
         }
     }
 
-    private static boolean isValidReplantStack(
-            ItemStack stack,
-            Level level,
-            BlockPos cropPos,
-            Block cropBlock
-    ) {
-        if (stack.isEmpty()) {
-            return false;
-        }
-
-        Item item = stack.getItem();
-        if (item instanceof IPlantable plantable) {
-            BlockState plantState = plantable.getPlant(level, cropPos);
-            return plantState != null && plantState.getBlock() == cropBlock;
-        }
-
-        return false;
+    private static boolean isValidReplantStack(ItemStack stack, Block cropBlock) {
+        return !stack.isEmpty()
+                && stack.getItem() instanceof BlockItem blockItem
+                && blockItem.getBlock() == cropBlock;
     }
 
     private record HarvestTarget(Block cropBlock, BlockState replantedState) {
