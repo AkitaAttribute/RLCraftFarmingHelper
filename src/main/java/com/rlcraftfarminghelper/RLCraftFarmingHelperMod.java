@@ -2,7 +2,9 @@ package com.rlcraftfarminghelper;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.TriState;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -91,8 +93,9 @@ public final class RLCraftFarmingHelperMod {
     }
 
     private static void markInteractionHandled(PlayerInteractEvent.RightClickBlock event) {
-        event.setUseBlock(PlayerInteractEvent.Result.DENY);
-        event.setUseItem(PlayerInteractEvent.Result.DENY);
+        event.setUseBlock(TriState.FALSE);
+        event.setUseItem(TriState.FALSE);
+        event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
     }
 
