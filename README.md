@@ -1,34 +1,52 @@
-# RLCraftFarmingHelper
+# RLCraft Farming Helper
 
-A Minecraft Forge mod for Minecraft **1.12.2** that lets players right-click mature crops to harvest and automatically replant them.
+A lightweight NeoForge mod for Minecraft **1.21.1** that lets players right-click mature crops to harvest them and automatically replant them when a matching planting item is available.
+
+This branch is the Minecraft 1.21.1 NeoForge port. The `main` branch remains the Forge 1.12.2 version.
 
 ## Behavior
 
-When a player right-clicks a mature `BlockCrops` block:
+When a player right-clicks a supported mature crop with the main hand:
 
-1. The mod validates that the crop is fully grown.
-2. The crop is harvested through normal player harvest logic (`tryHarvestBlock`) so break hooks/events still run.
-3. The mod primarily validates replant items via Forge's IPlantable contract (same planted crop block), with a stage-0-drop fallback for broader compatibility.
-4. If the player has at least one matching replant item in main inventory or offhand, one is consumed (main inventory preferred, offhand fallback).
-5. The crop is replanted at age 0.
+1. The mod verifies that the crop is fully grown.
+2. The server harvests it through normal player block-breaking logic, preserving standard drops and relevant break hooks.
+3. The mod searches the player's main inventory first and offhand second for an `IPlantable` item that plants the same crop block.
+4. When a matching item is found, one is consumed and the crop is replanted at age 0.
+5. When no matching item is available, the mature crop is still harvested and replanting is skipped.
 
-If no matching seed-equivalent item is found in inventory, nothing is harvested.
+Creative-mode players do not consume the planting item.
+
+## Supported crops
+
+- Crops implemented with Minecraft's `CropBlock` base class, including vanilla wheat, carrots, potatoes, and beetroot.
+- Nether Wart, which uses a separate age-based block implementation.
+- Compatible modded crops that extend `CropBlock` and expose their planting item through NeoForge's `IPlantable` contract.
 
 ## Compatibility
 
-- Minecraft: `1.12.2`
-- Forge target for compilation: `14.23.5.2847`
-- Forge `14.23.5.2860` compatibility is intended, but Forge no longer publishes userdev artifacts for that exact patch through current public Maven endpoints.
+- Minecraft: `1.21.1`
+- Mod loader: NeoForge `21.1.x`
+- Java: `21`
+
+The mod is required on the server. Installing it on clients is recommended so handled right-click interactions are immediately mirrored client-side.
 
 ## Build
 
-This project uses ForgeGradle 2.3 and requires Java 8 for full build/reobf.
+A Gradle wrapper JAR is not committed, so use Gradle 8.10.2 or allow the GitHub Actions workflow to build the branch.
 
 ```bash
-./gradlew clean build
+gradle clean build --no-daemon
 ```
 
-Output jar is produced in:
+The output JAR is produced in:
 
-- `build/libs/rlcraftfarminghelper-1.0.1.jar`
-- optional local mirror: `successful-builds/rlcraftfarminghelper-1.0.1+forge-14.23.5.2847.jar` (ignored by git)
+```text
+build/libs/rlcraftfarminghelper-2.0.0.jar
+```
+
+## Branches
+
+- `main`: Forge 1.12.2
+- `1.21.1-NeoForge`: NeoForge 1.21.1
+
+The GitHub Actions workflow detects the project type and selects Java 8 with Gradle 4.10.3 for the legacy Forge branch or Java 21 with Gradle 8.10.2 for this NeoForge branch.
