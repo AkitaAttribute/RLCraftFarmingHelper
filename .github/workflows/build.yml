@@ -2,6 +2,7 @@ name: Build Mod
 
 on:
   push:
+    branches: ['**']
   pull_request:
 
 jobs:
@@ -12,25 +13,38 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 8
+      - name: Select build toolchain
+        id: toolchain
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "1.21.1-NeoForge" ]] || grep -q "net.neoforged.moddev" build.gradle; then
+            echo "java=21" >> "$GITHUB_OUTPUT"
+            echo "gradle=8.10.2" >> "$GITHUB_OUTPUT"
+            echo "artifact=rlcraft-farming-helper-neoforge-1.21.1" >> "$GITHUB_OUTPUT"
+          else
+            echo "java=8" >> "$GITHUB_OUTPUT"
+            echo "gradle=4.10.3" >> "$GITHUB_OUTPUT"
+            echo "artifact=rlcraft-farming-helper-forge-1.12.2" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: ${{ steps.toolchain.outputs.java }}
 
-      # Wrapper JAR is currently not committed, so use a pinned Gradle runtime directly.
-      - name: Set up Gradle 4.10.3
-        uses: gradle/actions/setup-gradle@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 4.10.3
+          gradle-version: ${{ steps.toolchain.outputs.gradle }}
 
       - name: Build
-        run: gradle clean build --no-daemon
+        run: gradle clean build --no-daemon --stacktrace
 
       - name: Upload mod jar
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rlcraft-farming-helper-jar
+          name: ${{ steps.toolchain.outputs.artifact }}
           path: build/libs/*.jar
           if-no-files-found: error
