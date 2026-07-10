@@ -1,143 +1,121 @@
 package com.rlcraftfarminghelper;
 
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockCrops;
-import net.minecraft.block.BlockNetherWart;
-import net.minecraft.block.state.IBlockState;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.init.Items;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.EnumHand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
-import net.minecraftforge.common.IPlantable;
-import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.Event;
-import net.minecraftforge.fml.common.eventhandler.EventPriority;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.NetherWartBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.common.IPlantable;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-@Mod(
-        modid = RLCraftFarmingHelperMod.MOD_ID,
-        name = RLCraftFarmingHelperMod.NAME,
-        version = RLCraftFarmingHelperMod.VERSION,
-        acceptableRemoteVersions = "*"
-)
-@Mod.EventBusSubscriber(modid = RLCraftFarmingHelperMod.MOD_ID)
-public class RLCraftFarmingHelperMod {
+@Mod(RLCraftFarmingHelperMod.MOD_ID)
+public final class RLCraftFarmingHelperMod {
     public static final String MOD_ID = "rlcraftfarminghelper";
-    public static final String NAME = "RLCraft Farming Helper";
-    public static final String VERSION = "1.0.1";
     private static final Logger LOGGER = LogManager.getLogger(MOD_ID);
 
+    public RLCraftFarmingHelperMod() {
+        NeoForge.EVENT_BUS.register(this);
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onRightClickCrop(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getHand() != EnumHand.MAIN_HAND) {
+    public void onRightClickCrop(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
             return;
         }
 
-        World world = event.getWorld();
+        Level level = event.getLevel();
         BlockPos pos = event.getPos();
-        HarvestTarget target = findSupportedMatureTarget(world, pos, world.getBlockState(pos));
+        HarvestTarget target = findSupportedMatureTarget(level.getBlockState(pos));
         if (target == null) {
             return;
         }
 
-        if (world.isRemote) {
-            // Mirror server intent client-side so this click is treated as consumed by the mod.
+        if (level.isClientSide()) {
             markInteractionHandled(event);
-            LOGGER.debug("Client acknowledged handled crop click at {} ({})", pos, target.cropBlock.getRegistryName());
             return;
         }
 
-        EntityPlayer player = event.getEntityPlayer();
-        if (!(player instanceof EntityPlayerMP)) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
 
-        LOGGER.debug("Intercepted mature crop right-click at {} by {} ({})", pos, player.getName(), target.cropBlock.getRegistryName());
+        LOGGER.debug("Intercepted mature crop right-click at {} by {} ({})",
+                pos, player.getGameProfile().getName(), target.cropBlock());
 
-        EntityPlayerMP playerMP = (EntityPlayerMP) player;
-        boolean harvested = playerMP.interactionManager.tryHarvestBlock(pos);
-        LOGGER.debug("Harvest attempt at {} result={}", pos, harvested);
+        boolean harvested = player.gameMode.destroyBlock(pos);
         if (!harvested) {
             return;
         }
 
         markInteractionHandled(event);
-        LOGGER.debug("Marked interaction handled at {} with use-block/use-item DENY", pos);
 
-        if (canReplantAt(world, pos, target.replantedState)
-                && consumeOneReplantItem(player, world, pos, target.cropBlock, target.fallbackSeedItem)) {
-            world.setBlockState(pos, target.replantedState, 3);
-            LOGGER.debug("Replanted {} at {}", target.cropBlock.getRegistryName(), pos);
+        if (canReplantAt(level, pos, target.replantedState())
+                && consumeOneReplantItem(player, level, pos, target.cropBlock())) {
+            level.setBlock(pos, target.replantedState(), Block.UPDATE_ALL);
+            LOGGER.debug("Replanted {} at {}", target.cropBlock(), pos);
         } else {
-            LOGGER.debug("Skipped replant at {} (invalid location or no matching replant item)", pos);
+            LOGGER.debug("Harvested {} at {} without replanting", target.cropBlock(), pos);
         }
     }
 
-    private static HarvestTarget findSupportedMatureTarget(World world, BlockPos pos, IBlockState state) {
+    private static HarvestTarget findSupportedMatureTarget(BlockState state) {
         Block block = state.getBlock();
 
-        if (block instanceof BlockCrops) {
-            BlockCrops crops = (BlockCrops) block;
+        if (block instanceof CropBlock crops) {
             if (!crops.isMaxAge(state)) {
                 return null;
             }
-
-            IBlockState replantedState = crops.withAge(0);
-            Item fallbackSeedItem = crops.getItemDropped(replantedState, world.rand, 0);
-            return new HarvestTarget(block, replantedState, fallbackSeedItem);
+            return new HarvestTarget(block, crops.getStateForAge(0));
         }
 
-        if (block instanceof BlockNetherWart) {
-            int age = state.getValue(BlockNetherWart.AGE);
-            if (age < 3) {
+        if (block instanceof NetherWartBlock) {
+            int age = state.getValue(NetherWartBlock.AGE);
+            if (age < NetherWartBlock.MAX_AGE) {
                 return null;
             }
-
-            IBlockState replantedState = state.withProperty(BlockNetherWart.AGE, 0);
-            return new HarvestTarget(block, replantedState, Items.NETHER_WART);
+            return new HarvestTarget(block, state.setValue(NetherWartBlock.AGE, 0));
         }
 
         return null;
     }
 
     private static void markInteractionHandled(PlayerInteractEvent.RightClickBlock event) {
-        event.setUseBlock(Event.Result.DENY);
-        event.setUseItem(Event.Result.DENY);
+        event.setUseBlock(PlayerInteractEvent.Result.DENY);
+        event.setUseItem(PlayerInteractEvent.Result.DENY);
+        event.setCanceled(true);
     }
 
-    private static boolean canReplantAt(World world, BlockPos pos, IBlockState replantedState) {
-        return world.isAirBlock(pos) && replantedState.getBlock().canPlaceBlockAt(world, pos);
+    private static boolean canReplantAt(Level level, BlockPos pos, BlockState replantedState) {
+        return level.isEmptyBlock(pos) && replantedState.canSurvive(level, pos);
     }
 
-    private static boolean consumeOneReplantItem(EntityPlayer player, World world, BlockPos cropPos, Block cropBlock, Item fallbackSeedItem) {
-        // Prefer main inventory first, then offhand as a fallback source.
-        for (int i = 0; i < player.inventory.mainInventory.size(); i++) {
-            ItemStack stack = player.inventory.mainInventory.get(i);
-            if (isValidReplantStack(stack, world, cropPos, cropBlock, fallbackSeedItem)) {
-                stack.shrink(1);
-                if (stack.isEmpty()) {
-                    player.inventory.mainInventory.set(i, ItemStack.EMPTY);
-                }
-                player.inventory.markDirty();
+    private static boolean consumeOneReplantItem(
+            ServerPlayer player,
+            Level level,
+            BlockPos cropPos,
+            Block cropBlock
+    ) {
+        for (ItemStack stack : player.getInventory().items) {
+            if (isValidReplantStack(stack, level, cropPos, cropBlock)) {
+                consumeOne(player, stack);
                 return true;
             }
         }
 
-        for (int i = 0; i < player.inventory.offHandInventory.size(); i++) {
-            ItemStack stack = player.inventory.offHandInventory.get(i);
-            if (isValidReplantStack(stack, world, cropPos, cropBlock, fallbackSeedItem)) {
-                stack.shrink(1);
-                if (stack.isEmpty()) {
-                    player.inventory.offHandInventory.set(i, ItemStack.EMPTY);
-                }
-                player.inventory.markDirty();
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (isValidReplantStack(stack, level, cropPos, cropBlock)) {
+                consumeOne(player, stack);
                 return true;
             }
         }
@@ -145,34 +123,32 @@ public class RLCraftFarmingHelperMod {
         return false;
     }
 
-    private static boolean isValidReplantStack(ItemStack stack, World world, BlockPos cropPos, Block cropBlock, Item fallbackSeedItem) {
+    private static void consumeOne(ServerPlayer player, ItemStack stack) {
+        if (!player.getAbilities().instabuild) {
+            stack.shrink(1);
+            player.getInventory().setChanged();
+        }
+    }
+
+    private static boolean isValidReplantStack(
+            ItemStack stack,
+            Level level,
+            BlockPos cropPos,
+            Block cropBlock
+    ) {
         if (stack.isEmpty()) {
             return false;
         }
 
-        // Primary strategy: use IPlantable to verify this stack places the same crop block.
-        if (stack.getItem() instanceof IPlantable) {
-            IBlockState plantState = ((IPlantable) stack.getItem()).getPlant(world, cropPos);
-            if (plantState != null && plantState.getBlock() == cropBlock) {
-                return true;
-            }
+        Item item = stack.getItem();
+        if (item instanceof IPlantable plantable) {
+            BlockState plantState = plantable.getPlant(level, cropPos);
+            return plantState != null && plantState.getBlock() == cropBlock;
         }
 
-        // Fallback for crops/items that do not expose IPlantable correctly.
-        return fallbackSeedItem != null
-                && fallbackSeedItem != Item.getItemById(0)
-                && stack.getItem() == fallbackSeedItem;
+        return false;
     }
 
-    private static class HarvestTarget {
-        private final Block cropBlock;
-        private final IBlockState replantedState;
-        private final Item fallbackSeedItem;
-
-        private HarvestTarget(Block cropBlock, IBlockState replantedState, Item fallbackSeedItem) {
-            this.cropBlock = cropBlock;
-            this.replantedState = replantedState;
-            this.fallbackSeedItem = fallbackSeedItem;
-        }
+    private record HarvestTarget(Block cropBlock, BlockState replantedState) {
     }
 }
