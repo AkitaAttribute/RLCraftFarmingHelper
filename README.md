@@ -10,7 +10,7 @@ When a player right-clicks a supported mature crop with the main hand:
 
 1. The mod verifies that the crop is fully grown.
 2. The server harvests it through normal player block-breaking logic, preserving standard drops and relevant break hooks.
-3. The mod searches the player's main inventory first and offhand second for an `IPlantable` item that plants the same crop block.
+3. The mod searches the player's main inventory first and offhand second for a block item that places the same crop block.
 4. When a matching item is found, one is consumed and the crop is replanted at age 0.
 5. When no matching item is available, the mature crop is still harvested and replanting is skipped.
 
@@ -20,7 +20,7 @@ Creative-mode players do not consume the planting item.
 
 - Crops implemented with Minecraft's `CropBlock` base class, including vanilla wheat, carrots, potatoes, and beetroot.
 - Nether Wart, which uses a separate age-based block implementation.
-- Compatible modded crops that extend `CropBlock` and expose their planting item through NeoForge's `IPlantable` contract.
+- Compatible modded crops that extend `CropBlock` and use a `BlockItem` planting item associated with the same crop block.
 
 ## Compatibility
 
